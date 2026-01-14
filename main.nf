@@ -8,17 +8,12 @@ nextflow.enable.dsl = 2
 // --------------------------------------------------------------- //
 workflow {
 
-	// Input channels - heavy and light chain barcodes
-	ch_heavy_dir = Channel
-		.fromPath( "${params.fastq_dir}/${params.heavy_barcode}/", type: 'dir' )
-		.map { dir -> tuple( "heavy", dir ) }
+	// Auto-detect all barcode directories
+	ch_barcodes = Channel
+		.fromPath( "${params.fastq_dir}/barcode*/", type: 'dir' )
+		.map { dir -> tuple( dir.getName(), dir ) }
 
-	ch_light_dir = Channel
-		.fromPath( "${params.fastq_dir}/${params.light_barcode}/", type: 'dir' )
-		.map { dir -> tuple( "light", dir ) }
-
-	ch_input_dirs = ch_heavy_dir.mix( ch_light_dir )
-
+	// Load primers for trimming (chain-specific, grouped by chain)
 	ch_primers = Channel
 		.fromPath( params.primer_table )
 		.splitCsv( header: true )
@@ -26,6 +21,22 @@ workflow {
 		.filter { it[2] == "true" }
 		.groupTuple( by: 0 )
 		.map { chain, primers, diff -> tuple( chain, primers ) }
+
+	// Load classification primers (separated by chain type)
+	ch_class_primers = Channel
+		.fromPath( params.primer_table )
+		.splitCsv( header: true )
+		.filter { row -> row.differentiating == "true" }
+
+	heavy_primers = ch_class_primers
+		.filter { row -> row.chain == 'heavy' }
+		.map { row -> row.primer_seq }
+		.collect()
+
+	light_primers = ch_class_primers
+		.filter { row -> row.chain == 'light' }
+		.map { row -> row.primer_seq }
+		.collect()
 
 	// Germline gene files (if available)
 	ch_germlines = Channel
@@ -35,29 +46,44 @@ workflow {
 
 	// Workflow steps
 
-	// Stage 1: Read Processing
+	// Stage 1: Read Processing - Merge reads per barcode
 	MERGE_READS(
-		ch_input_dirs
+		ch_barcodes
 	)
 
-	QUALITY_FILTER(
+	// Stage 2: Classify reads by primer sequence
+	CLASSIFY_BY_PRIMER(
 		MERGE_READS.out
-			.map { chain, fastq -> tuple( chain, file(fastq), file(fastq).countFastq() ) }
-			.filter { it[2] >= params.min_reads }
-			.map { chain, fastq, count -> tuple( chain, fastq ) }
+			.combine( heavy_primers )
+			.combine( light_primers )
+	)
+
+	// Combine heavy and light outputs, filter empty files
+	ch_classified = CLASSIFY_BY_PRIMER.out.heavy
+		.mix( CLASSIFY_BY_PRIMER.out.light )
+		.filter { barcode_id, chain, fastq ->
+			fastq.countFastq() >= params.min_reads
+		}
+
+	// Stage 3: Quality filter
+	QUALITY_FILTER(
+		ch_classified
 	)
 
 	FIND_ADAPTERS(
 		QUALITY_FILTER.out
 	)
 
+	// Join with chain-specific primers for trimming
 	TRIM_PRIMERS(
 		QUALITY_FILTER.out
-			.join( ch_primers )
-			.join( FIND_ADAPTERS.out )
+			.map { barcode_id, chain, fastq -> tuple( chain, barcode_id, fastq ) }
+			.combine( ch_primers, by: 0 )
+			.map { chain, barcode_id, fastq, primers -> tuple( barcode_id, chain, fastq, primers ) }
+			.join( FIND_ADAPTERS.out, by: [0, 1] )
 	)
 
-	// Stage 2: Clustering & Consensus
+	// Stage 4: Clustering & Consensus
 	CONVERT_TO_FASTA(
 		TRIM_PRIMERS.out
 	)
@@ -66,7 +92,7 @@ workflow {
 		CONVERT_TO_FASTA.out
 	)
 
-	// Stage 3: Annotation (conditional on germline files being available)
+	// Stage 5: Annotation (conditional on germline files being available)
 	if ( !params.skip_annotation ) {
 		BUILD_IGBLAST_DB(
 			ch_germlines
@@ -81,7 +107,7 @@ workflow {
 			ANNOTATE_IGBLAST.out
 		)
 
-		// Stage 4: Reporting
+		// Stage 6: Reporting
 		COLLECT_STATS(
 			PARSE_ANNOTATIONS.out.collect()
 		)
@@ -116,10 +142,11 @@ if ( params.debugmode == true ){
 }
 
 params.merged_reads = params.results + "/1_merged_reads"
-params.filtered_reads = params.results + "/2_filtered_reads"
-params.consensus_seqs = params.results + "/3_consensus_sequences"
-params.annotations = params.results + "/4_annotations"
-params.reports = params.results + "/5_reports"
+params.classified_reads = params.results + "/2_classified_reads"
+params.filtered_reads = params.results + "/3_filtered_reads"
+params.consensus_seqs = params.results + "/4_consensus_sequences"
+params.annotations = params.results + "/5_annotations"
+params.reports = params.results + "/6_reports"
 // --------------------------------------------------------------- //
 
 
@@ -129,8 +156,8 @@ params.reports = params.results + "/5_reports"
 
 process MERGE_READS {
 
-	tag "${chain}"
-	publishDir params.merged_reads, mode: 'copy', overwrite: true
+	tag "${barcode_id}"
+	publishDir "${params.merged_reads}/${barcode_id}", mode: 'copy', overwrite: true
 
 	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
 	maxRetries 2
@@ -138,22 +165,70 @@ process MERGE_READS {
 	cpus 4
 
 	input:
-	tuple val(chain), path(read_dir)
+	tuple val(barcode_id), path(read_dir)
 
 	output:
-	tuple val(chain), path("${chain}_chain.fastq.gz")
+	tuple val(barcode_id), path("${barcode_id}_merged.fastq.gz")
 
 	script:
 	"""
-	seqkit scat -j ${task.cpus} -f `realpath ${read_dir}` -o ${chain}_chain.fastq.gz
+	seqkit scat -j ${task.cpus} -f `realpath ${read_dir}` -o ${barcode_id}_merged.fastq.gz
+	"""
+
+}
+
+process CLASSIFY_BY_PRIMER {
+
+	tag "${barcode_id}"
+	publishDir "${params.classified_reads}/${barcode_id}", mode: 'copy', overwrite: true
+
+	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
+	maxRetries 2
+
+	cpus 4
+
+	input:
+	tuple val(barcode_id), path(merged_reads), val(heavy_primer_list), val(light_primer_list)
+
+	output:
+	tuple val(barcode_id), val("heavy"), path("${barcode_id}_heavy.fastq.gz"), emit: heavy
+	tuple val(barcode_id), val("light"), path("${barcode_id}_light.fastq.gz"), emit: light
+	tuple val(barcode_id), val("unmatched"), path("${barcode_id}_unmatched.fastq.gz"), emit: unmatched
+
+	script:
+	heavy_seqs = heavy_primer_list.join('\n')
+	light_seqs = light_primer_list.join('\n')
+	"""
+	# Create primer reference files in FASTA format
+	echo -e ">heavy_primer\\n${heavy_seqs}" > heavy_primers.fasta
+	echo -e ">light_primer\\n${light_seqs}" > light_primers.fasta
+
+	# Step 1: Extract heavy chain reads (matching heavy primers)
+	bbduk.sh in=`realpath ${merged_reads}` \
+		outm=${barcode_id}_heavy.fastq.gz \
+		outu=temp_not_heavy.fastq.gz \
+		ref=heavy_primers.fasta \
+		k=15 hdist=${params.primer_mismatch} \
+		qin=33 threads=${task.cpus}
+
+	# Step 2: From remaining reads, extract light chain reads
+	bbduk.sh in=temp_not_heavy.fastq.gz \
+		outm=${barcode_id}_light.fastq.gz \
+		outu=${barcode_id}_unmatched.fastq.gz \
+		ref=light_primers.fasta \
+		k=15 hdist=${params.primer_mismatch} \
+		qin=33 threads=${task.cpus}
+
+	# Cleanup temp file
+	rm -f temp_not_heavy.fastq.gz
 	"""
 
 }
 
 process QUALITY_FILTER {
 
-	tag "${chain}"
-	publishDir params.filtered_reads, mode: 'copy', overwrite: true
+	tag "${barcode_id}_${chain}"
+	publishDir "${params.filtered_reads}/${barcode_id}", mode: 'copy', overwrite: true
 
 	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
 	maxRetries 2
@@ -161,10 +236,10 @@ process QUALITY_FILTER {
 	cpus 4
 
 	input:
-	tuple val(chain), path(reads)
+	tuple val(barcode_id), val(chain), path(reads)
 
 	output:
-	tuple val(chain), path("${chain}_chain_filtered.fastq.gz")
+	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_filtered.fastq.gz")
 
 	script:
 	"""
@@ -175,35 +250,35 @@ process QUALITY_FILTER {
 	--validate-seq \
 	--threads ${task.cpus} \
 	${reads} \
-	-o ${chain}_chain_filtered.fastq.gz
+	-o ${barcode_id}_${chain}_filtered.fastq.gz
 	"""
 
 }
 
 process FIND_ADAPTERS {
 
-	tag "${chain}"
+	tag "${barcode_id}_${chain}"
 
 	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
 	maxRetries 2
 
 	input:
-	tuple val(chain), path(reads)
+	tuple val(barcode_id), val(chain), path(reads)
 
 	output:
-	tuple val(chain), path("${chain}_adapters.fasta")
+	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_adapters.fasta")
 
 	script:
 	"""
-	bbmerge.sh in=`realpath ${reads}` outa="${chain}_adapters.fasta" ow qin=33
+	bbmerge.sh in=`realpath ${reads}` outa="${barcode_id}_${chain}_adapters.fasta" ow qin=33
 	"""
 
 }
 
 process TRIM_PRIMERS {
 
-	tag "${chain}"
-	publishDir params.filtered_reads, mode: 'copy', overwrite: true
+	tag "${barcode_id}_${chain}"
+	publishDir "${params.filtered_reads}/${barcode_id}", mode: 'copy', overwrite: true
 
 	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
 	maxRetries 2
@@ -211,10 +286,10 @@ process TRIM_PRIMERS {
 	cpus 4
 
 	input:
-	tuple val(chain), path(reads), val(primer_seqs), path(adapters)
+	tuple val(barcode_id), val(chain), path(reads), val(primer_seqs), path(adapters)
 
 	output:
-	tuple val(chain), path("${chain}_chain_trimmed.fastq.gz")
+	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_trimmed.fastq.gz")
 
 	script:
 	seq_patterns = primer_seqs
@@ -226,7 +301,7 @@ process TRIM_PRIMERS {
 		.replace(",", "\n")
 	"""
 	echo "${seq_patterns}" > primers.fasta
-	bbduk.sh in=`realpath ${reads}` out=${chain}_chain_trimmed.fastq.gz \
+	bbduk.sh in=`realpath ${reads}` out=${barcode_id}_${chain}_trimmed.fastq.gz \
 	ref=primers.fasta,`realpath ${adapters}` \
 	ktrim=r k=19 mink=11 hdist=2 \
 	minlength=${params.min_len} maxlength=${params.max_len} \
@@ -237,28 +312,28 @@ process TRIM_PRIMERS {
 
 process CONVERT_TO_FASTA {
 
-	tag "${chain}"
+	tag "${barcode_id}_${chain}"
 
 	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
 	maxRetries 2
 
 	input:
-	tuple val(chain), path(reads)
+	tuple val(barcode_id), val(chain), path(reads)
 
 	output:
-	tuple val(chain), path("${chain}_chain.fasta")
+	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}.fasta")
 
 	script:
 	"""
-	seqkit fq2fa `realpath ${reads}` > ${chain}_chain.fasta
+	seqkit fq2fa `realpath ${reads}` > ${barcode_id}_${chain}.fasta
 	"""
 
 }
 
 process CLUSTER_READS {
 
-	tag "${chain}"
-	publishDir params.consensus_seqs, mode: 'copy', overwrite: true
+	tag "${barcode_id}_${chain}"
+	publishDir "${params.consensus_seqs}/${barcode_id}", mode: 'copy', overwrite: true
 
 	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
 	maxRetries 2
@@ -266,17 +341,17 @@ process CLUSTER_READS {
 	cpus 4
 
 	input:
-	tuple val(chain), path(fasta)
+	tuple val(barcode_id), val(chain), path(fasta)
 
 	output:
-	tuple val(chain), path("${chain}_consensus")
+	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_consensus")
 
 	script:
 	def amb_flag = params.use_ambiguous ? '-amb' : ''
 	"""
 	amplicon_sorter.py \
 	-i ${fasta} \
-	-o ${chain}_consensus \
+	-o ${barcode_id}_${chain}_consensus \
 	-min ${params.min_len} -max ${params.max_len} \
 	-sg ${params.similar_genes} \
 	-ss ${params.similar_species} \
@@ -316,17 +391,17 @@ process BUILD_IGBLAST_DB {
 
 process ANNOTATE_IGBLAST {
 
-	tag "${chain}"
-	publishDir params.annotations, mode: 'copy', overwrite: true
+	tag "${barcode_id}_${chain}"
+	publishDir "${params.annotations}/${barcode_id}", mode: 'copy', overwrite: true
 
 	errorStrategy 'ignore'
 
 	input:
 	path db_files
-	tuple val(chain), path(consensus_dir)
+	tuple val(barcode_id), val(chain), path(consensus_dir)
 
 	output:
-	tuple val(chain), path("${chain}_igblast.tsv"), path(consensus_dir)
+	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_igblast.tsv"), path(consensus_dir)
 
 	script:
 	"""
@@ -335,7 +410,7 @@ process ANNOTATE_IGBLAST {
 
 	if [ -z "\$consensus_fasta" ]; then
 		# If no fasta found, create empty output
-		echo "No consensus sequences found" > ${chain}_igblast.tsv
+		echo "No consensus sequences found" > ${barcode_id}_${chain}_igblast.tsv
 	else
 		# Run IgBLAST with custom bovine database
 		igblastn \
@@ -345,8 +420,8 @@ process ANNOTATE_IGBLAST {
 		-auxiliary_data optional_file/human_gl.aux \
 		-query "\$consensus_fasta" \
 		-outfmt "7 std qseq sseq" \
-		-out ${chain}_igblast.tsv \
-		|| echo "IgBLAST completed with warnings" > ${chain}_igblast.tsv
+		-out ${barcode_id}_${chain}_igblast.tsv \
+		|| echo "IgBLAST completed with warnings" > ${barcode_id}_${chain}_igblast.tsv
 	fi
 	"""
 
@@ -354,16 +429,16 @@ process ANNOTATE_IGBLAST {
 
 process PARSE_ANNOTATIONS {
 
-	tag "${chain}"
-	publishDir params.annotations, mode: 'copy', overwrite: true
+	tag "${barcode_id}_${chain}"
+	publishDir "${params.annotations}/${barcode_id}", mode: 'copy', overwrite: true
 
 	errorStrategy 'ignore'
 
 	input:
-	tuple val(chain), path(igblast_out), path(consensus_dir)
+	tuple val(barcode_id), val(chain), path(igblast_out), path(consensus_dir)
 
 	output:
-	tuple val(chain), path("${chain}_annotations.tsv"), path("${chain}_cdr3.fasta")
+	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_annotations.tsv"), path("${barcode_id}_${chain}_cdr3.fasta")
 
 	script:
 	"""
@@ -371,8 +446,8 @@ process PARSE_ANNOTATIONS {
 	--input ${igblast_out} \
 	--consensus_dir ${consensus_dir} \
 	--chain ${chain} \
-	--output_tsv ${chain}_annotations.tsv \
-	--output_cdr3 ${chain}_cdr3.fasta
+	--output_tsv ${barcode_id}_${chain}_annotations.tsv \
+	--output_cdr3 ${barcode_id}_${chain}_cdr3.fasta
 	"""
 
 }
@@ -392,13 +467,16 @@ process COLLECT_STATS {
 
 	script:
 	"""
-	echo -e "chain\tnum_sequences\tnum_unique_v\tnum_unique_j\tavg_cdr3_len" > summary_stats.tsv
+	echo -e "barcode\tchain\tnum_sequences\tnum_unique_v\tnum_unique_j\tavg_cdr3_len" > summary_stats.tsv
 
 	for f in *_annotations.tsv; do
-		chain=\$(basename "\$f" _annotations.tsv)
+		# Extract barcode and chain from filename (format: barcode_chain_annotations.tsv)
+		basename=\$(basename "\$f" _annotations.tsv)
+		barcode=\$(echo "\$basename" | rev | cut -d'_' -f2- | rev)
+		chain=\$(echo "\$basename" | rev | cut -d'_' -f1 | rev)
 		if [ -s "\$f" ]; then
 			num_seqs=\$(tail -n +2 "\$f" | wc -l)
-			echo -e "\${chain}\t\${num_seqs}\tNA\tNA\tNA" >> summary_stats.tsv
+			echo -e "\${barcode}\t\${chain}\t\${num_seqs}\tNA\tNA\tNA" >> summary_stats.tsv
 		fi
 	done
 	"""
@@ -445,14 +523,17 @@ process COLLECT_CONSENSUS_STATS {
 
 	script:
 	"""
-	echo -e "chain\tnum_consensus_sequences\ttotal_reads" > summary_stats.tsv
+	echo -e "barcode\tchain\tnum_consensus_sequences\ttotal_reads" > summary_stats.tsv
 
 	for dir in */; do
-		chain=\$(basename "\$dir" _consensus)
+		# Extract barcode and chain from directory name (format: barcode_chain_consensus)
+		dirname=\$(basename "\$dir" _consensus)
+		barcode=\$(echo "\$dirname" | rev | cut -d'_' -f2- | rev)
+		chain=\$(echo "\$dirname" | rev | cut -d'_' -f1 | rev)
 		if [ -d "\$dir" ]; then
 			# Count consensus sequences
 			num_seqs=\$(find "\$dir" -name "*.fasta" -exec grep -c "^>" {} + 2>/dev/null | awk -F: '{sum+=\$2} END {print sum}' || echo 0)
-			echo -e "\${chain}\t\${num_seqs}\tNA" >> summary_stats.tsv
+			echo -e "\${barcode}\t\${chain}\t\${num_seqs}\tNA" >> summary_stats.tsv
 		fi
 	done
 	"""
