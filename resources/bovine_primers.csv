@@ -1,0 +1,5 @@
+chain,primer_seq,differentiating,technical_label
+heavy,GGTCACCATGCTGCTGAGAGAG,false,Cow_IgG1_rev1.1
+heavy,CTTTCGGGGCTGTGGTG,true,Cow_IgG1_rev2
+light,AAGTCGCTGATGAGACACACC,false,Cow_LC_rev1
+light,TGGAGGGCGGGAACAG,true,Cow_LC_rev2.3

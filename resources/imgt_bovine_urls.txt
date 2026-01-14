@@ -1,0 +1,26 @@
+# Bovine (Bos taurus) IMGT Germline Gene References
+#
+# IMGT does not provide direct download URLs for individual species.
+# You need to download these manually from IMGT/GENE-DB:
+# https://www.imgt.org/genedb/
+#
+# Instructions:
+# 1. Go to https://www.imgt.org/genedb/
+# 2. Select Species: "Bos taurus"
+# 3. Select Group: "IGHV" (then repeat for IGHD, IGHJ, IGKV, IGKJ, IGLV, IGLJ)
+# 4. Select Functionality: "functional" (or all)
+# 5. Click Search, then select all genes and Export as FASTA
+# 6. Save files as: bovine_IGHV.fasta, bovine_IGHD.fasta, etc.
+# 7. Place files in this resources/ directory
+#
+# Alternatively, use the Immcantation framework's fetch_imgtdb.sh:
+# https://changeo.readthedocs.io/en/stable/examples/germlines.html
+#
+# Required files (place in resources/ directory):
+# - bovine_IGHV.fasta
+# - bovine_IGHD.fasta
+# - bovine_IGHJ.fasta
+# - bovine_IGKV.fasta
+# - bovine_IGKJ.fasta
+# - bovine_IGLV.fasta
+# - bovine_IGLJ.fasta
