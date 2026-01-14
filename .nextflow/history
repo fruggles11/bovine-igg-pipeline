@@ -1,0 +1,1 @@
+2026-01-14 14:28:40	4.1s	determined_euclid	OK	628d634810513f0896cc35c6561496d6	b3606171-4aab-44e9-863e-b85d50283cc1	nextflow run main.nf -preview --fastq_dir /tmp/test

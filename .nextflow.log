@@ -1,0 +1,69 @@
+Jan-14 14:28:38.839 [main] DEBUG nextflow.cli.Launcher - $> nextflow run main.nf -preview --fastq_dir /tmp/test
+Jan-14 14:28:38.929 [main] INFO  nextflow.cli.CmdRun - N E X T F L O W  ~  version 23.04.2
+Jan-14 14:28:38.967 [main] DEBUG nextflow.plugin.PluginsFacade - Setting up plugin manager > mode=prod; embedded=false; plugins-dir=/Users/jasonweinfurter/.nextflow/plugins; core-plugins: nf-amazon@1.16.2,nf-azure@1.0.1,nf-codecommit@0.1.4,nf-console@1.0.5,nf-ga4gh@1.0.5,nf-google@1.7.3,nf-tower@1.5.12,nf-wave@0.8.3
+Jan-14 14:28:38.983 [main] INFO  org.pf4j.DefaultPluginStatusProvider - Enabled plugins: []
+Jan-14 14:28:38.984 [main] INFO  org.pf4j.DefaultPluginStatusProvider - Disabled plugins: []
+Jan-14 14:28:38.989 [main] INFO  org.pf4j.DefaultPluginManager - PF4J version 3.4.1 in 'deployment' mode
+Jan-14 14:28:39.005 [main] INFO  org.pf4j.AbstractPluginManager - No plugins
+Jan-14 14:28:39.034 [main] DEBUG nextflow.config.ConfigBuilder - Found config local: /Users/jasonweinfurter/Documents/Reynolds_lab/Projects/claude code/bovine-igg-pipeline/nextflow.config
+Jan-14 14:28:39.035 [main] DEBUG nextflow.config.ConfigBuilder - Parsing config file: /Users/jasonweinfurter/Documents/Reynolds_lab/Projects/claude code/bovine-igg-pipeline/nextflow.config
+Jan-14 14:28:39.074 [main] DEBUG nextflow.config.ConfigBuilder - Applying config profile: `standard`
+Jan-14 14:28:40.097 [main] DEBUG nextflow.cli.CmdRun - Applied DSL=2 from script declararion
+Jan-14 14:28:40.135 [main] INFO  nextflow.cli.CmdRun - * PREVIEW * null [determined_euclid] DSL2 - revision: 628d634810
+Jan-14 14:28:40.136 [main] DEBUG nextflow.plugin.PluginsFacade - Plugins default=[]
+Jan-14 14:28:40.136 [main] DEBUG nextflow.plugin.PluginsFacade - Plugins resolved requirement=[]
+Jan-14 14:28:40.151 [main] DEBUG nextflow.secret.LocalSecretsProvider - Secrets store: /Users/jasonweinfurter/.nextflow/secrets/store.json
+Jan-14 14:28:40.156 [main] DEBUG nextflow.secret.SecretsLoader - Discovered secrets providers: [nextflow.secret.LocalSecretsProvider@118ffcfd] - activable => nextflow.secret.LocalSecretsProvider@118ffcfd
+Jan-14 14:28:40.276 [main] DEBUG nextflow.Session - Session UUID: b3606171-4aab-44e9-863e-b85d50283cc1
+Jan-14 14:28:40.276 [main] DEBUG nextflow.Session - Run name: determined_euclid
+Jan-14 14:28:40.277 [main] DEBUG nextflow.Session - Executor pool size: 12
+Jan-14 14:28:40.296 [main] DEBUG nextflow.util.ThreadPoolBuilder - Creating thread pool 'FileTransfer' minSize=10; maxSize=36; workQueue=LinkedBlockingQueue[10000]; allowCoreThreadTimeout=false
+Jan-14 14:28:40.395 [main] DEBUG nextflow.cli.CmdRun - 
+  Version: 23.04.2 build 5870
+  Created: 08-06-2023 08:29 UTC (03:29 CDT)
+  System: Mac OS X 10.16
+  Runtime: Groovy 3.0.16 on Java HotSpot(TM) 64-Bit Server VM 14.0.2+12-46
+  Encoding: UTF-8 (UTF-8)
+  Process: 8555@SVM-PBS-3322 [10.140.17.190]
+  CPUs: 12 - Mem: 16 GB (817.4 MB) - Swap: 1 GB (1017.5 MB)
+Jan-14 14:28:40.423 [main] DEBUG nextflow.Session - Work-dir: /Users/jasonweinfurter/Documents/Reynolds_lab/Projects/claude code/bovine-igg-pipeline/work [Mac OS X]
+Jan-14 14:28:40.450 [main] DEBUG nextflow.executor.ExecutorFactory - Extension executors providers=[]
+Jan-14 14:28:40.466 [main] DEBUG nextflow.Session - Observer factory: DefaultObserverFactory
+Jan-14 14:28:40.520 [main] DEBUG nextflow.cache.CacheFactory - Using Nextflow cache factory: nextflow.cache.DefaultCacheFactory
+Jan-14 14:28:40.537 [main] DEBUG nextflow.util.CustomThreadPool - Creating default thread pool > poolSize: 13; maxThreads: 1000
+Jan-14 14:28:40.656 [main] DEBUG nextflow.Session - Session start
+Jan-14 14:28:42.705 [main] DEBUG nextflow.script.ScriptRunner - > Launching execution
+Jan-14 14:28:43.006 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.006 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.014 [main] DEBUG nextflow.executor.Executor - [warm up] executor > local
+Jan-14 14:28:43.022 [main] DEBUG n.processor.LocalPollingMonitor - Creating local task monitor for executor 'local' > cpus=12; memory=16 GB; capacity=12; pollInterval=100ms; dumpInterval=5m
+Jan-14 14:28:43.145 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.145 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.159 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.160 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.166 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.166 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.190 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.190 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.199 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.199 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.211 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.211 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.218 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.218 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.230 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.230 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.237 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.237 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.244 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.244 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.248 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: null
+Jan-14 14:28:43.248 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jan-14 14:28:43.251 [main] DEBUG nextflow.Session - Workflow process names [dsl2]: COLLECT_CONSENSUS_STATS, TRIM_PRIMERS, CLASSIFY_BY_PRIMER, BUILD_IGBLAST_DB, CONVERT_TO_FASTA, QUALITY_FILTER, CLUSTER_READS, MERGE_READS, FIND_ADAPTERS, PARSE_ANNOTATIONS, GENERATE_REPORT, ANNOTATE_IGBLAST, COLLECT_STATS
+Jan-14 14:28:43.257 [main] DEBUG nextflow.trace.WorkflowStatsObserver - Workflow completed > WorkflowStats[succeededCount=0; failedCount=0; ignoredCount=0; cachedCount=0; pendingCount=0; submittedCount=0; runningCount=0; retriesCount=0; abortedCount=0; succeedDuration=0ms; failedDuration=0ms; cachedDuration=0ms;loadCpus=0; loadMemory=0; peakRunning=0; peakCpus=0; peakMemory=0; ]
+Jan-14 14:28:43.257 [main] DEBUG nextflow.trace.ReportObserver - Workflow completed -- rendering execution report
+Jan-14 14:28:43.264 [main] DEBUG nextflow.trace.ReportObserver - Execution report summary data:
+  []
+Jan-14 14:28:44.034 [main] DEBUG nextflow.cache.CacheDB - Closing CacheDB done
+Jan-14 14:28:44.074 [main] DEBUG nextflow.util.ThreadPoolManager - Thread pool 'FileTransfer' shutdown completed (hard=false)
+Jan-14 14:28:44.074 [main] DEBUG nextflow.script.ScriptRunner - > Execution complete -- Goodbye

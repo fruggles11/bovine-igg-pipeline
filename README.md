@@ -73,7 +73,7 @@ If germline files are not available, run with `--skip_annotation true` to skip t
 |-----------|---------|-------------|
 | `--fastq_dir` | (required) | Path to directory containing barcode subdirectories |
 | `--primer_table` | `resources/bovine_primers.csv` | CSV file with primer sequences for chain classification |
-| `--primer_mismatch` | `4` | Allowed mismatches when matching primers |
+| `--primer_mismatch` | `2` | Allowed mismatches when matching primers (max 3) |
 | `--min_len` | `400` | Minimum amplicon length |
 | `--max_len` | `800` | Maximum amplicon length |
 | `--min_qual` | `10` | Minimum quality score |
