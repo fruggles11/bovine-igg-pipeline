@@ -14,10 +14,15 @@ This pipeline processes heavy and light chain IgG amplicons from cow PBMCs, clus
 ## Quick Start
 
 ```bash
-nextflow run . --fastq_dir /path/to/fastq_pass
+nextflow run fruggles11/bovine-igg-pipeline --fastq_dir /path/to/fastq_pass
 ```
 
 That's it! The pipeline will automatically detect all barcode directories and classify reads as heavy or light chain based on primer sequences.
+
+To use a specific version:
+```bash
+nextflow run fruggles11/bovine-igg-pipeline -r main --fastq_dir /path/to/fastq_pass
+```
 
 ## Input Data
 
