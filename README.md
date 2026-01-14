@@ -14,11 +14,10 @@ This pipeline processes heavy and light chain IgG amplicons from cow PBMCs, clus
 ## Quick Start
 
 ```bash
-nextflow run . \
-  --fastq_dir /path/to/fastq_pass \
-  --heavy_barcode barcode01 \
-  --light_barcode barcode02
+nextflow run . --fastq_dir /path/to/fastq_pass
 ```
+
+That's it! The pipeline will automatically detect all barcode directories and classify reads as heavy or light chain based on primer sequences.
 
 ## Input Data
 
@@ -26,13 +25,21 @@ The pipeline expects Oxford Nanopore basecalled FASTQ files organized by barcode
 
 ```
 fastq_pass/
-├── barcode01/    # Heavy chain reads
+├── barcode01/
 │   ├── file1.fastq.gz
 │   └── file2.fastq.gz
-└── barcode02/    # Light chain reads
-    ├── file1.fastq.gz
-    └── file2.fastq.gz
+├── barcode02/
+│   ├── file1.fastq.gz
+│   └── file2.fastq.gz
+└── barcode03/    # Any number of barcodes supported
+    └── ...
 ```
+
+**Key features:**
+- All directories matching `barcode*/` are automatically detected
+- Reads are classified as heavy or light chain based on primer sequence matching
+- No need to specify which barcode contains which chain type
+- Unmatched reads (no primer detected) are saved separately for review
 
 ## Setting Up IgBLAST Annotation (Optional)
 
@@ -60,36 +67,56 @@ If germline files are not available, run with `--skip_annotation true` to skip t
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--fastq_dir` | (required) | Path to directory containing barcode subdirectories |
-| `--heavy_barcode` | `barcode01` | Name of heavy chain barcode directory |
-| `--light_barcode` | `barcode02` | Name of light chain barcode directory |
+| `--primer_table` | `resources/bovine_primers.csv` | CSV file with primer sequences for chain classification |
+| `--primer_mismatch` | `4` | Allowed mismatches when matching primers |
 | `--min_len` | `400` | Minimum amplicon length |
 | `--max_len` | `800` | Maximum amplicon length |
 | `--min_qual` | `10` | Minimum quality score |
-| `--min_reads` | `100` | Minimum reads per sample |
+| `--min_reads` | `100` | Minimum reads per chain per barcode |
 | `--similar_consensus` | `98` | Clustering threshold for merging groups |
 | `--skip_annotation` | `false` | Skip IgBLAST annotation |
 | `--results` | `./results` | Output directory |
 
 ## Output
 
+Results are organized by barcode:
+
 ```
 results/
-├── 1_merged_reads/           # Merged reads per chain
-├── 2_filtered_reads/         # Quality-filtered and trimmed reads
-├── 3_consensus_sequences/    # Clustered consensus sequences
-├── 4_annotations/            # V/D/J annotations and CDR3 sequences
-└── 5_reports/                # Summary statistics
+├── 1_merged_reads/
+│   └── barcode01/
+│       └── barcode01_merged.fastq.gz
+├── 2_classified_reads/
+│   └── barcode01/
+│       ├── barcode01_heavy.fastq.gz      # Heavy chain reads
+│       ├── barcode01_light.fastq.gz      # Light chain reads
+│       └── barcode01_unmatched.fastq.gz  # Reads without primer match
+├── 3_filtered_reads/
+│   └── barcode01/
+│       ├── barcode01_heavy_filtered.fastq.gz
+│       └── barcode01_light_filtered.fastq.gz
+├── 4_consensus_sequences/
+│   └── barcode01/
+│       ├── barcode01_heavy_consensus/
+│       └── barcode01_light_consensus/
+├── 5_annotations/
+│   └── barcode01/
+│       ├── barcode01_heavy_annotations.tsv
+│       └── barcode01_light_annotations.tsv
+└── 6_reports/
+    └── summary_stats.tsv
 ```
 
 ## Pipeline Steps
 
 1. **Merge Reads** - Concatenate reads from each barcode
-2. **Quality Filter** - Filter by length and quality
-3. **Trim Primers** - Remove primer and adapter sequences
-4. **Cluster Reads** - Cluster similar sequences using amplicon_sorter
-5. **Annotate** (optional) - V/D/J gene assignment with IgBLAST
-6. **Parse CDR3** (optional) - Extract CDR3 sequences
-7. **Report** - Generate summary statistics
+2. **Classify by Primer** - Sort reads into heavy/light chain based on primer sequences
+3. **Quality Filter** - Filter by length and quality
+4. **Trim Primers** - Remove primer and adapter sequences
+5. **Cluster Reads** - Cluster similar sequences using amplicon_sorter
+6. **Annotate** (optional) - V/D/J gene assignment with IgBLAST
+7. **Parse CDR3** (optional) - Extract CDR3 sequences
+8. **Report** - Generate summary statistics
 
 ## Bovine IgG Considerations
 
