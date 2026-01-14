@@ -196,12 +196,17 @@ process CLASSIFY_BY_PRIMER {
 	tuple val(barcode_id), val("unmatched"), path("${barcode_id}_unmatched.fastq.gz"), emit: unmatched
 
 	script:
-	heavy_seqs = heavy_primer_list.join('\n')
-	light_seqs = light_primer_list.join('\n')
+	def heavy_fasta = heavy_primer_list.withIndex().collect { seq, i -> ">heavy_${i}\n${seq}" }.join('\n')
+	def light_fasta = light_primer_list.withIndex().collect { seq, i -> ">light_${i}\n${seq}" }.join('\n')
 	"""
 	# Create primer reference files in FASTA format
-	echo -e ">heavy_primer\\n${heavy_seqs}" > heavy_primers.fasta
-	echo -e ">light_primer\\n${light_seqs}" > light_primers.fasta
+	cat << 'HEAVY_EOF' > heavy_primers.fasta
+${heavy_fasta}
+HEAVY_EOF
+
+	cat << 'LIGHT_EOF' > light_primers.fasta
+${light_fasta}
+LIGHT_EOF
 
 	# Step 1: Extract heavy chain reads (matching heavy primers)
 	bbduk.sh in=`realpath ${merged_reads}` \
