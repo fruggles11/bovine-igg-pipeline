@@ -299,15 +299,12 @@ process TRIM_PRIMERS {
 	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_trimmed.fastq.gz")
 
 	script:
-	seq_patterns = primer_seqs
-		.toString()
-		.replace("[", "")
-		.replace("]", "")
-		.replace("'", "")
-		.replace(" ", "")
-		.replace(",", "\n")
+	def primer_list = primer_seqs instanceof List ? primer_seqs : [primer_seqs]
+	def primer_fasta = primer_list.withIndex().collect { seq, i -> ">primer_${i}\n${seq}" }.join('\n')
 	"""
-	echo "${seq_patterns}" > primers.fasta
+	cat << 'PRIMER_EOF' > primers.fasta
+${primer_fasta}
+PRIMER_EOF
 	bbduk.sh in=`realpath ${reads}` out=${barcode_id}_${chain}_trimmed.fastq.gz \
 	ref=primers.fasta,`realpath ${adapters}` \
 	ktrim=r k=19 mink=11 hdist=2 \
