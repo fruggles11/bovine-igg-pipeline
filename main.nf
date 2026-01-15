@@ -297,11 +297,17 @@ process TRIM_PRIMERS {
 
 	script:
 	"""
-	bbduk.sh in=`realpath ${reads}` out=${barcode_id}_${chain}_trimmed.fastq.gz \
-	ref=`realpath ${adapters}` \
-	ktrim=r k=19 mink=11 hdist=2 \
-	minlength=${params.min_len} maxlength=${params.max_len} \
-	qin=33 threads=${task.cpus}
+	# Check if adapters file has real sequences (not just N's)
+	if grep -v '^>' ${adapters} | grep -q '[ACGT]'; then
+		bbduk.sh in=`realpath ${reads}` out=${barcode_id}_${chain}_trimmed.fastq.gz \
+		ref=`realpath ${adapters}` \
+		ktrim=r k=19 mink=11 hdist=2 \
+		minlength=${params.min_len} maxlength=${params.max_len} \
+		qin=33 threads=${task.cpus}
+	else
+		# No real adapters found, just copy input to output
+		cp `realpath ${reads}` ${barcode_id}_${chain}_trimmed.fastq.gz
+	fi
 	"""
 
 }
