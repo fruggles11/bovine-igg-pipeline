@@ -74,12 +74,9 @@ workflow {
 		QUALITY_FILTER.out
 	)
 
-	// Join with chain-specific primers for trimming
+	// Trim adapters only (no primer trimming)
 	TRIM_PRIMERS(
 		QUALITY_FILTER.out
-			.map { barcode_id, chain, fastq -> tuple( chain, barcode_id, fastq ) }
-			.combine( ch_primers, by: 0 )
-			.map { chain, barcode_id, fastq, primers -> tuple( barcode_id, chain, fastq, primers ) }
 			.join( FIND_ADAPTERS.out, by: [0, 1] )
 	)
 
@@ -293,20 +290,15 @@ process TRIM_PRIMERS {
 	cpus 4
 
 	input:
-	tuple val(barcode_id), val(chain), path(reads), val(primer_seqs), path(adapters)
+	tuple val(barcode_id), val(chain), path(reads), path(adapters)
 
 	output:
 	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_trimmed.fastq.gz")
 
 	script:
-	def primer_list = primer_seqs instanceof List ? primer_seqs : [primer_seqs]
-	def primer_fasta = primer_list.withIndex().collect { seq, i -> ">primer_${i}\n${seq}" }.join('\n')
 	"""
-	cat << 'PRIMER_EOF' > primers.fasta
-${primer_fasta}
-PRIMER_EOF
 	bbduk.sh in=`realpath ${reads}` out=${barcode_id}_${chain}_trimmed.fastq.gz \
-	ref=primers.fasta,`realpath ${adapters}` \
+	ref=`realpath ${adapters}` \
 	ktrim=r k=19 mink=11 hdist=2 \
 	minlength=${params.min_len} maxlength=${params.max_len} \
 	qin=33 threads=${task.cpus}
