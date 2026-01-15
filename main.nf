@@ -196,8 +196,10 @@ process CLASSIFY_BY_PRIMER {
 	tuple val(barcode_id), val("unmatched"), path("${barcode_id}_unmatched.fastq.gz"), emit: unmatched
 
 	script:
-	def heavy_fasta = heavy_primer_list.withIndex().collect { seq, i -> ">heavy_${i}\n${seq}" }.join('\n')
-	def light_fasta = light_primer_list.withIndex().collect { seq, i -> ">light_${i}\n${seq}" }.join('\n')
+	def heavy_list = heavy_primer_list instanceof List ? heavy_primer_list : [heavy_primer_list]
+	def light_list = light_primer_list instanceof List ? light_primer_list : [light_primer_list]
+	def heavy_fasta = heavy_list.withIndex().collect { seq, i -> ">heavy_${i}\n${seq}" }.join('\n')
+	def light_fasta = light_list.withIndex().collect { seq, i -> ">light_${i}\n${seq}" }.join('\n')
 	"""
 	# Create primer reference files in FASTA format
 	cat << 'HEAVY_EOF' > heavy_primers.fasta
