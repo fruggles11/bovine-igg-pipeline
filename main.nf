@@ -110,6 +110,7 @@ workflow {
 		)
 	} else {
 		// Skip annotation, just collect consensus stats
+		// Extract only the path (third element) from the tuple before collecting
 		COLLECT_CONSENSUS_STATS(
 			CLUSTER_READS.out.map { barcode_id, chain, consensus_dir -> consensus_dir }.collect()
 		)
