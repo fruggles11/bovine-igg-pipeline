@@ -3,3 +3,5 @@ heavy,GGTCACCATGCTGCTGAGAGAG,false,Cow_IgG1_rev1.1
 heavy,CTTTCGGGGCTGTGGTG,true,Cow_IgG1_rev2
 light,AAGTCGCTGATGAGACACACC,false,Cow_LC_rev1
 light,TGGAGGGCGGGAACAG,true,Cow_LC_rev2.3
+heavy,GGAGACCCCAACAGCCTTGTC,false,Bovine_IgG2_outer_rev1
+heavy,AGGAGACGGTGACCAGGAG,true,Bovine_JH2_4_inner_rev1
