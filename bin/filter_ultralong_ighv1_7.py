@@ -60,8 +60,8 @@ def main():
                         help='AIRR-format TSV from Change-O MakeDb')
     parser.add_argument('--fasta',
                         help='Optional FASTA with input sequences (if not embedded in TSV)')
-    parser.add_argument('--min_cdr3_aa', type=int, default=50,
-                        help='Minimum CDR3 length in amino acids, default 50')
+    parser.add_argument('--min_cdr3_aa', type=int, default=40,
+                        help='Minimum CDR3 length in amino acids, default 40')
     parser.add_argument('--out_tsv',
                         help='Output filtered TSV (default: <db>_ighv1_7_ultralong.tsv)')
     parser.add_argument('--out_fasta',
