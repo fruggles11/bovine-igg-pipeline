@@ -89,7 +89,12 @@ workflow {
 		CONVERT_TO_FASTA.out
 	)
 
-	// Stage 5: Annotation (conditional on germline files being available)
+	// Stage 5: Extract majority consensus sequence per barcode/chain for Geneious import
+	EXTRACT_MAJORITY_CONSENSUS(
+		CLUSTER_READS.out
+	)
+
+	// Stage 6: Annotation (conditional on germline files being available)
 	if ( !params.skip_annotation ) {
 		BUILD_IGBLAST_DB(
 			ch_germlines
@@ -143,8 +148,9 @@ params.merged_reads = params.results + "/1_merged_reads"
 params.classified_reads = params.results + "/2_classified_reads"
 params.filtered_reads = params.results + "/3_filtered_reads"
 params.consensus_seqs = params.results + "/4_consensus_sequences"
-params.annotations = params.results + "/5_annotations"
-params.reports = params.results + "/6_reports"
+params.majority_consensus = params.results + "/5_majority_consensus"
+params.annotations = params.results + "/6_annotations"
+params.reports = params.results + "/7_reports"
 // --------------------------------------------------------------- //
 
 
@@ -362,6 +368,45 @@ process CLUSTER_READS {
 	-ldc ${params.length_diff_consensus} \
 	${amb_flag} \
 	-ar -maxr ${params.max_reads} -ra -np ${task.cpus}
+	"""
+
+}
+
+process EXTRACT_MAJORITY_CONSENSUS {
+
+	tag "${barcode_id}_${chain}"
+	publishDir "${params.majority_consensus}", mode: 'copy', overwrite: true
+
+	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
+	maxRetries 2
+
+	input:
+	tuple val(barcode_id), val(chain), path(consensus_dir)
+
+	output:
+	path("${barcode_id}_${chain}_majority.fasta"), optional: true
+
+	script:
+	"""
+	# Find the FASTA file with the most sequences — that cluster has the most reads (majority)
+	find ${consensus_dir} -name "*.fasta" > fasta_list.txt
+
+	best_file=""
+	best_count=0
+	while read -r f; do
+		count=\$(grep -c "^>" "\$f" 2>/dev/null || echo 0)
+		if [ "\$count" -gt "\$best_count" ]; then
+			best_count="\$count"
+			best_file="\$f"
+		fi
+	done < fasta_list.txt
+
+	if [ -n "\$best_file" ] && [ "\$best_count" -gt 0 ]; then
+		# Extract only the first (consensus) sequence and give it a meaningful name
+		awk '/^>/{n++; if(n>1) exit} {print}' "\$best_file" | \
+		sed "1s/.*/>barcode=${barcode_id} chain=${chain} majority_consensus/" \
+		> ${barcode_id}_${chain}_majority.fasta
+	fi
 	"""
 
 }
