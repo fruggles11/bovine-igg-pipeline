@@ -388,25 +388,40 @@ process EXTRACT_MAJORITY_CONSENSUS {
 
 	script:
 	"""
-	# Find the FASTA file with the most sequences — that cluster has the most reads (majority)
-	find ${consensus_dir} -name "*.fasta" > fasta_list.txt
+	# Find the top-level *_consensussequences.fasta (exclude group-specific *_N_consensussequences.fasta)
+	consensus_file=\$(find ${consensus_dir} -name "*_consensussequences.fasta" \
+		| grep -vE '_[0-9]+_consensussequences\\.fasta\$' | head -1)
 
-	best_file=""
+	if [ -z "\$consensus_file" ]; then
+		exit 0
+	fi
+
+	# Read counts are encoded in the header as (N) e.g. >consensus_barcode01_heavy_0_0(581)
+	# Find the header with the highest read count
+	grep "^>" "\$consensus_file" > headers.txt
+	best_header=""
 	best_count=0
-	while read -r f; do
-		count=\$(grep -c "^>" "\$f" 2>/dev/null || echo 0)
+	while IFS= read -r header; do
+		count=\$(echo "\$header" | grep -oE '\\([0-9]+\\)' | tr -d '()')
+		count=\${count:-0}
 		if [ "\$count" -gt "\$best_count" ]; then
 			best_count="\$count"
-			best_file="\$f"
+			best_header="\$header"
 		fi
-	done < fasta_list.txt
+	done < headers.txt
 
-	if [ -n "\$best_file" ] && [ "\$best_count" -gt 0 ]; then
-		# Extract only the first (consensus) sequence and give it a meaningful name
-		awk '/^>/{n++; if(n>1) exit} {print}' "\$best_file" | \
-		sed "1s/.*/>barcode=${barcode_id} chain=${chain} majority_consensus/" \
-		> ${barcode_id}_${chain}_majority.fasta
+	if [ -z "\$best_header" ]; then
+		exit 0
 	fi
+
+	# Extract the sequence for that header and write with an informative name
+	awk -v target="\$best_header" \
+		-v new_header=">${barcode_id} chain=${chain} majority_consensus reads=\$best_count" '
+		\$0 == target { found=1; next }
+		/^>/ { if (found) exit }
+		found { seq = seq \$0 }
+		END { if (seq != "") { print new_header; print seq } }
+	' "\$consensus_file" > ${barcode_id}_${chain}_majority.fasta
 	"""
 
 }
