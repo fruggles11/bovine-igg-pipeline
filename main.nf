@@ -94,6 +94,9 @@ workflow {
 		CLUSTER_READS.out
 	)
 
+	ch_majority = EXTRACT_MAJORITY_CONSENSUS.out
+		.filter { barcode_id, chain, fasta -> fasta.size() > 0 }
+
 	// Stage 6: Annotation (conditional on germline files being available)
 	if ( !params.skip_annotation ) {
 		BUILD_IGBLAST_DB(
@@ -112,6 +115,22 @@ workflow {
 		// Stage 6: Reporting
 		COLLECT_STATS(
 			PARSE_ANNOTATIONS.out.collect()
+		)
+
+		// Stage 7: VDJ annotation on majority consensus sequences
+		BUILD_VDJ_DB(
+			ch_germlines
+		)
+
+		ch_vdj_db = BUILD_VDJ_DB.out.first()
+
+		ANNOTATE_MAJORITY_VDJ(
+			ch_vdj_db,
+			ch_majority
+		)
+
+		SUMMARIZE_VDJ(
+			ANNOTATE_MAJORITY_VDJ.out.collect()
 		)
 	} else {
 		// Skip annotation, just collect consensus stats
@@ -150,6 +169,7 @@ params.filtered_reads = params.results + "/3_filtered_reads"
 params.consensus_seqs = params.results + "/4_consensus_sequences"
 params.majority_consensus = params.results + "/5_majority_consensus"
 params.annotations = params.results + "/6_annotations"
+params.vdj_annotations = params.results + "/6_vdj_annotations"
 params.reports = params.results + "/7_reports"
 // --------------------------------------------------------------- //
 
@@ -384,7 +404,7 @@ process EXTRACT_MAJORITY_CONSENSUS {
 	tuple val(barcode_id), val(chain), path(consensus_dir)
 
 	output:
-	path("${barcode_id}_${chain}_majority.fasta"), optional: true
+	tuple val(barcode_id), val(chain), path("${barcode_id}_${chain}_majority.fasta")
 
 	script:
 	"""
@@ -393,6 +413,7 @@ process EXTRACT_MAJORITY_CONSENSUS {
 		| grep -vE '_[0-9]+_consensussequences\\.fasta\$' | head -1)
 
 	if [ -z "\$consensus_file" ]; then
+		touch ${barcode_id}_${chain}_majority.fasta
 		exit 0
 	fi
 
@@ -411,6 +432,7 @@ process EXTRACT_MAJORITY_CONSENSUS {
 	done < headers.txt
 
 	if [ -z "\$best_header" ]; then
+		touch ${barcode_id}_${chain}_majority.fasta
 		exit 0
 	fi
 
@@ -597,6 +619,146 @@ process COLLECT_CONSENSUS_STATS {
 			# Count consensus sequences
 			num_seqs=\$(find "\$dir" -name "*.fasta" -exec grep -c "^>" {} + 2>/dev/null | awk -F: '{sum+=\$2} END {print sum}' || echo 0)
 			echo -e "\${barcode}\t\${chain}\t\${num_seqs}\tNA" >> summary_stats.tsv
+		fi
+	done
+	"""
+
+}
+
+process BUILD_VDJ_DB {
+
+	errorStrategy { task.attempt < 3 ? 'retry' : errorMode }
+	maxRetries 2
+
+	input:
+	path fastas
+
+	output:
+	path "vdj_db_*"
+
+	script:
+	"""
+	# Build separate V, D, J BLAST databases from IMGT-format germline files.
+	# Files are identified by standard IMGT naming (e.g. IgHV, IgHD, IGHJ, IgKV, IgLJ, etc.).
+	# Dots in sequence lines are IMGT alignment gaps and are stripped before DB construction.
+	heavy_v=\$(ls *.fasta 2>/dev/null | grep -iE 'IGHV' | tr '\\n' ' ')
+	heavy_d=\$(ls *.fasta 2>/dev/null | grep -iE 'IGHD' | tr '\\n' ' ')
+	heavy_j=\$(ls *.fasta 2>/dev/null | grep -iE 'IGHJ' | tr '\\n' ' ')
+	light_v=\$(ls *.fasta 2>/dev/null | grep -iE 'IG[KL]V' | tr '\\n' ' ')
+	light_j=\$(ls *.fasta 2>/dev/null | grep -iE 'IG[KL]J' | tr '\\n' ' ')
+
+	if [ -n "\$heavy_v" ]; then
+		cat \$heavy_v | sed '/^>/!s/\\.//g' > heavy_V_nogaps.fasta
+		makeblastdb -parse_seqids -dbtype nucl -in heavy_V_nogaps.fasta -out vdj_db_heavy_V
+	fi
+	if [ -n "\$heavy_d" ]; then
+		cat \$heavy_d | sed '/^>/!s/\\.//g' > heavy_D_nogaps.fasta
+		makeblastdb -parse_seqids -dbtype nucl -in heavy_D_nogaps.fasta -out vdj_db_heavy_D
+	fi
+	if [ -n "\$heavy_j" ]; then
+		cat \$heavy_j | sed '/^>/!s/\\.//g' > heavy_J_nogaps.fasta
+		makeblastdb -parse_seqids -dbtype nucl -in heavy_J_nogaps.fasta -out vdj_db_heavy_J
+	fi
+	if [ -n "\$light_v" ]; then
+		cat \$light_v | sed '/^>/!s/\\.//g' > light_V_nogaps.fasta
+		makeblastdb -parse_seqids -dbtype nucl -in light_V_nogaps.fasta -out vdj_db_light_V
+	fi
+	if [ -n "\$light_j" ]; then
+		cat \$light_j | sed '/^>/!s/\\.//g' > light_J_nogaps.fasta
+		makeblastdb -parse_seqids -dbtype nucl -in light_J_nogaps.fasta -out vdj_db_light_J
+	fi
+
+	ls vdj_db_* 2>/dev/null || touch vdj_db_placeholder
+	"""
+
+}
+
+process ANNOTATE_MAJORITY_VDJ {
+
+	tag "${barcode_id}_${chain}"
+	publishDir { "${params.vdj_annotations}/${barcode_id}" }, mode: 'copy', overwrite: true
+
+	errorStrategy 'ignore'
+
+	cpus 4
+
+	input:
+	path db_files
+	tuple val(barcode_id), val(chain), path(majority_fasta)
+
+	output:
+	path("${barcode_id}_${chain}_vdj.airr.tsv")
+
+	script:
+	"""
+	export IGDATA=/opt/ncbi-igblast-1.22.0
+
+	if [ "${chain}" == "heavy" ]; then
+		d_flag=""
+		if ls vdj_db_heavy_D.* 2>/dev/null | head -1 > /dev/null 2>&1; then
+			d_flag="-germline_db_D vdj_db_heavy_D"
+		fi
+		igblastn \\
+			-germline_db_V vdj_db_heavy_V \\
+			\$d_flag \\
+			-germline_db_J vdj_db_heavy_J \\
+			-query ${majority_fasta} \\
+			-ig_seqtype Ig \\
+			-organism human \\
+			-num_threads ${task.cpus} \\
+			-outfmt 19 \\
+			-out ${barcode_id}_${chain}_vdj.airr.tsv \\
+			|| echo -e "sequence_id\\tv_call\\td_call\\tj_call\\tproductive" > ${barcode_id}_${chain}_vdj.airr.tsv
+	else
+		igblastn \\
+			-germline_db_V vdj_db_light_V \\
+			-germline_db_J vdj_db_light_J \\
+			-query ${majority_fasta} \\
+			-ig_seqtype Ig \\
+			-organism human \\
+			-num_threads ${task.cpus} \\
+			-outfmt 19 \\
+			-out ${barcode_id}_${chain}_vdj.airr.tsv \\
+			|| echo -e "sequence_id\\tv_call\\td_call\\tj_call\\tproductive" > ${barcode_id}_${chain}_vdj.airr.tsv
+	fi
+	"""
+
+}
+
+process SUMMARIZE_VDJ {
+
+	publishDir params.reports, mode: 'copy', overwrite: true
+
+	errorStrategy 'ignore'
+
+	input:
+	path airr_files
+
+	output:
+	path "vdj_summary.tsv"
+
+	script:
+	"""
+	echo -e "barcode\\tchain\\tv_call\\td_call\\tj_call\\tproductive\\tv_identity\\tjunction_aa_length" > vdj_summary.tsv
+
+	for f in *_vdj.airr.tsv; do
+		base=\$(basename "\$f" _vdj.airr.tsv)
+		chain=\$(echo "\$base" | rev | cut -d'_' -f1 | rev)
+		barcode=\$(echo "\$base" | rev | cut -d'_' -f2- | rev)
+
+		if [ -s "\$f" ]; then
+			awk -v barcode="\$barcode" -v chain="\$chain" '
+			BEGIN { FS="\\t"; OFS="\\t" }
+			NR==1 { for(i=1;i<=NF;i++) col[\$i]=i; next }
+			NF > 1 {
+				v_call    = (col["v_call"]     && \$col["v_call"]     != "") ? \$col["v_call"]     : "NA"
+				d_call    = (col["d_call"]     && \$col["d_call"]     != "") ? \$col["d_call"]     : "NA"
+				j_call    = (col["j_call"]     && \$col["j_call"]     != "") ? \$col["j_call"]     : "NA"
+				prod      = (col["productive"] && \$col["productive"] != "") ? \$col["productive"] : "NA"
+				v_id      = (col["v_identity"] && \$col["v_identity"] != "") ? \$col["v_identity"] : "NA"
+				jaa_len   = (col["junction_aa"] && \$col["junction_aa"] != "") ? length(\$col["junction_aa"]) : "NA"
+				print barcode, chain, v_call, d_call, j_call, prod, v_id, jaa_len
+			}' "\$f" >> vdj_summary.tsv
 		fi
 	done
 	"""
